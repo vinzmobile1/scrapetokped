@@ -176,8 +176,8 @@ def extract_product_details(pdp_data):
         'ttsPID': get_nested_value(pdp_data, ['basicInfo', 'ttsPID']),
         'ShopID': get_nested_value(pdp_data, ['basicInfo', 'shopID']),
         'ShopName': get_nested_value(pdp_data, ['basicInfo', 'shopName']),
-        'CountSold': get_nested_value(pdp_data, ['basicInfo', 'txStats', 'countSold']),
-        'CountReview': get_nested_value(pdp_data, ['basicInfo', 'stats', 'countReview']),
+        'CountSold': int(get_nested_value(pdp_data, ['basicInfo', 'txStats', 'countSold'])),
+        'CountReview': int(get_nested_value(pdp_data, ['basicInfo', 'stats', 'countReview'])),
         'Rating': get_nested_value(pdp_data, ['basicInfo', 'stats', 'rating']),
     }
 
@@ -186,7 +186,7 @@ def extract_product_details(pdp_data):
         try:
             session_data = json.loads(pdp_session_str)
             details['ProductName'] = get_nested_value(session_data, ['ppn'])
-            details['PriceValue'] = get_nested_value(session_data, ['pr'])
+            details['PriceValue'] = int(get_nested_value(session_data, ['pr']))
         except json.JSONDecodeError:
             details['ProductName'] = get_nested_value(pdp_data, ['name']) # Fallback
             details['PriceValue'] = None
