@@ -73,7 +73,7 @@ def fetch_all_product_urls_from_shop(headers, sid):
     return product_urls
 
 # === Step 2: Fetch Product Detail ===
-def fetch_tokopedia_product_data(product_url, headers_template):
+def fetch_tokopedia_product_data(product_url, headers_template, show_logs=False):
     try:
         parsed_url = urlparse(product_url)
         path_parts = [part for part in parsed_url.path.split('/') if part]
@@ -112,7 +112,8 @@ def fetch_tokopedia_product_data(product_url, headers_template):
     }]
 
     try:
-        st.write(f"--- MENGIRIM REQUEST UNTUK: {product_url}")
+        if show_logs:
+            st.write(f"--- MENGIRIM REQUEST UNTUK: {product_url}")
         response = requests.post(request_url, json=payload, headers=headers_template, timeout=30)
         response.raise_for_status()
         return response.json()[0]["data"].get("pdpGetLayout")
@@ -152,6 +153,8 @@ def extract_product_details(pdp_data):
 # === Streamlit UI ===
 st.title("Tokopedia Produk Scraper")
 sid_input = st.text_input("Masukkan SID toko Tokopedia:", "10726874")
+show_logs = st.checkbox("Tampilkan log URL yang diproses")
+
 if st.button("Execute"):
     st.info("Mengambil data produk...")
 
@@ -175,14 +178,16 @@ if st.button("Execute"):
 
     urls = fetch_all_product_urls_from_shop(headers, sid_input)
     all_data = []
+    progress_bar = st.progress(0)
 
-    for url in urls:
-        pdp = fetch_tokopedia_product_data(url, headers)
+    for i, url in enumerate(urls):
+        pdp = fetch_tokopedia_product_data(url, headers, show_logs=show_logs)
         if pdp:
             data = extract_product_details(pdp)
             if data:
                 data['ProductURL'] = url
                 all_data.append(data)
+        progress_bar.progress((i + 1) / len(urls))
 
     if all_data:
         df = pd.DataFrame(all_data)
