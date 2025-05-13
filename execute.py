@@ -172,9 +172,9 @@ def extract_product_details(pdp_data):
         return None
 
     details = {
-        'ProductID': get_nested_value(pdp_data, ['basicInfo', 'id']),
-        'ttsPID': get_nested_value(pdp_data, ['basicInfo', 'ttsPID']),
-        'ShopID': get_nested_value(pdp_data, ['basicInfo', 'shopID']),
+        'ProductID': str(get_nested_value(pdp_data, ['basicInfo', 'id'])),
+        'ttsPID': str(get_nested_value(pdp_data, ['basicInfo', 'ttsPID'])),
+        'ShopID': str(get_nested_value(pdp_data, ['basicInfo', 'shopID'])),
         'ShopName': get_nested_value(pdp_data, ['basicInfo', 'shopName']),
         'CountSold': int(get_nested_value(pdp_data, ['basicInfo', 'txStats', 'countSold'])),
         'CountReview': int(get_nested_value(pdp_data, ['basicInfo', 'stats', 'countReview'])),
