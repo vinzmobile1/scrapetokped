@@ -6,6 +6,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 import pandas as pd
 import time
 import io
+from io import BytesIO
 
 # === Helper Function ===
 def get_nested_value(data_dict, keys, default=None):
