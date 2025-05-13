@@ -196,7 +196,7 @@ if st.button("Execute"):
 
         # Convert to Excel
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Produk')
             writer.save()
         st.download_button("Download Excel", output.getvalue(), "tokopedia_produk.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
