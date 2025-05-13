@@ -83,7 +83,7 @@ def fetch_initial_product_data_from_shop(headers, sid):
     while True:
         page_count += 1
         elapsed_fetch_time = time.time() - start_fetch_time
-        page_progress_text.text(f"Mengambil data awal dari halaman {page_count}... Waktu berjalan: {format_duration(elapsed_fetch_time)}")
+        page_progress_text.text(f"Mengambil data awal dari halaman {page_count}... | Waktu berjalan: {format_duration(elapsed_fetch_time)}")
 
         try:
             response = requests.post(url_gql_shop_products, headers=headers, json=get_payload(page), timeout=30)
