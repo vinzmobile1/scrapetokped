@@ -280,7 +280,7 @@ if st.button("Execute", key="execute_button"):
                 progress_bar.progress(progress_percentage)
                 status_text.text(f"Memproses {i+1}/{len(initial_product_list)} produk... Waktu berjalan: {format_duration(elapsed_time)}{eta_str}")
                 
-                time.sleep(0.2) # Jeda antar request PDP (bisa disesuaikan)
+                time.sleep(0.1) # Jeda antar request PDP (bisa disesuaikan)
 
             total_processing_time = time.time() - start_processing_time
             status_text.text(f"Selesai! Total waktu pemrosesan detail: {format_duration(total_processing_time)}.")
