@@ -152,7 +152,7 @@ def extract_product_details(pdp_data):
 
 # === Streamlit UI ===
 st.title("Tokopedia Produk Scraper")
-sid_input = st.text_input("Masukkan SID toko Tokopedia:", "10726874")
+sid_input = st.text_input("Masukkan SID toko Tokopedia:", "12345")
 show_logs = st.checkbox("Tampilkan log URL yang diproses")
 
 if st.button("Execute"):
