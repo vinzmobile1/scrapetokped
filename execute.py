@@ -300,7 +300,7 @@ if st.button("Execute", key="execute_button"):
                 df_final = df_final[final_columns_ordered]
 
                 st.success(f"Berhasil mengambil dan menggabungkan data untuk {len(df_final)} produk.")
-                st.dataframe(df_final)
+                st.dataframe(df_final, hide_index=True)
 
                 output_excel = io.BytesIO()
                 with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
