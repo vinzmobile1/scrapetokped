@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import json
 import uuid
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs
 import pandas as pd
 import time
 import io
@@ -32,9 +32,9 @@ def format_duration(seconds):
         hours = seconds / 3600
         return f"{hours:.1f} jam"
 
-# === Step 1: Fetch All Product Info (URL, Name, Price) ===
-def fetch_all_product_info_from_shop(headers, sid): # Nama fungsi diubah untuk lebih deskriptif
-    url_gql = "https://gql.tokopedia.com/graphql/ShopProducts" # Ganti nama var 'url' agar tidak konflik
+# === Step 1: Fetch Initial Product Data from ShopProducts ===
+def fetch_initial_product_data_from_shop(headers, sid):
+    url_gql_shop_products = "https://gql.tokopedia.com/graphql/ShopProducts"
 
     def get_payload(page):
         return [{
@@ -43,11 +43,11 @@ def fetch_all_product_info_from_shop(headers, sid): # Nama fungsi diubah untuk l
                 "source": "shop",
                 "sid": sid,
                 "page": page,
-                "perPage": 80,
-                "etalaseId": "etalase",
-                "sort": 1,
-                "user_districtId": "2274",
-                "user_cityId": "176",
+                "perPage": 80, # Ambil maksimal 80 per halaman
+                "etalaseId": "etalase", # atau "" untuk semua etalase
+                "sort": 1, # Urutan default
+                "user_districtId": "2274", # Contoh, bisa dikosongkan
+                "user_cityId": "176",     # Contoh, bisa dikosongkan
                 "user_lat": "0",
                 "user_long": "0"
             },
@@ -62,9 +62,10 @@ def fetch_all_product_info_from_shop(headers, sid): # Nama fungsi diubah untuk l
                 }) {
                     links { next }
                     data {
-                        product_url
-                        name  # <--- DIAMBIL DI SINI
-                        price { # <--- DIAMBIL DARI SINI
+                        product_id  # ID Produk dari ShopProducts
+                        name        # Nama Produk
+                        product_url # URL Produk
+                        price {     # Harga
                             text_idr
                         }
                     }
@@ -73,139 +74,146 @@ def fetch_all_product_info_from_shop(headers, sid): # Nama fungsi diubah untuk l
             """
         }]
 
-    product_info_list = [] # Akan menyimpan list of dictionaries
+    initial_product_data_list = []
     page = 1
-    st.write("Memulai pengambilan info produk awal (URL, Nama, Harga)...")
+    st.write("Memulai pengambilan data awal produk dari ShopProducts...")
     page_progress_text = st.empty()
     start_fetch_time = time.time()
     page_count = 0
     while True:
         page_count += 1
         elapsed_fetch_time = time.time() - start_fetch_time
-        page_progress_text.text(f"Mengambil info dari halaman {page_count}... Waktu berjalan: {format_duration(elapsed_fetch_time)}")
-
-        response = requests.post(url_gql, headers=headers, json=get_payload(page))
-        if response.status_code != 200:
-            st.error(f"Gagal mengambil info dari halaman {page}. Status: {response.status_code}")
-            st.json(response.text)
-            break
+        page_progress_text.text(f"Mengambil data awal dari halaman {page_count}... Waktu berjalan: {format_duration(elapsed_fetch_time)}")
 
         try:
-            result = response.json()[0]['data']['GetShopProduct']
+            response = requests.post(url_gql_shop_products, headers=headers, json=get_payload(page), timeout=30)
+            response.raise_for_status() # Cek HTTP errors
+        except requests.exceptions.RequestException as e:
+            st.error(f"Request ke ShopProducts halaman {page} gagal: {e}")
+            break # Hentikan jika request gagal
+
+        try:
+            gql_response_data = response.json()
+            if not gql_response_data or not isinstance(gql_response_data, list) or not gql_response_data[0].get('data'):
+                st.warning(f"Struktur respons ShopProducts tidak valid dari halaman {page}.")
+                if show_logs: st.json(gql_response_data)
+                break
+
+            result_gql = gql_response_data[0]['data']['GetShopProduct']
             products_on_page = []
-            for p_data in result.get('data', []):
+            for p_data in result_gql.get('data', []):
                 product_info = {
-                    'url': get_nested_value(p_data, ['product_url']),
-                    'name_from_gql': get_nested_value(p_data, ['name']),
-                    'price_text_from_gql': get_nested_value(p_data, ['price', 'text_idr'])
+                    'product_id_shop': get_nested_value(p_data, ['product_id']),
+                    'name_shop': get_nested_value(p_data, ['name']),
+                    'url_shop': get_nested_value(p_data, ['product_url']),
+                    'price_text_shop': get_nested_value(p_data, ['price', 'text_idr'])
                 }
-                if product_info['url']: # Hanya tambahkan jika URL ada
+                if product_info['url_shop']:
                     products_on_page.append(product_info)
-            product_info_list.extend(products_on_page)
-        except (IndexError, KeyError, TypeError) as e:
-            st.error(f"Error parsing JSON dari halaman {page}: {e}")
-            st.json(response.json())
+            initial_product_data_list.extend(products_on_page)
+        except (IndexError, KeyError, TypeError, json.JSONDecodeError) as e:
+            st.error(f"Error parsing JSON dari ShopProducts halaman {page}: {e}")
+            if show_logs: st.json(response.text) # Tampilkan raw text jika parsing gagal
             break
 
-        if not result['links']['next']:
+        if not result_gql.get('links', {}).get('next'):
             break
         page += 1
-        time.sleep(1) # Tetap beri jeda
+        time.sleep(0.5) # Jeda antar halaman ShopProducts
 
     total_fetch_time = time.time() - start_fetch_time
-    page_progress_text.text(f"Selesai mengambil info awal. Total {len(product_info_list)} produk ditemukan dalam {format_duration(total_fetch_time)}.")
-    return product_info_list
+    page_progress_text.text(f"Selesai mengambil data awal dari ShopProducts. Total {len(initial_product_data_list)} produk ditemukan dalam {format_duration(total_fetch_time)}.")
+    return initial_product_data_list
 
-# === Step 2: Fetch Product Detail (PDP) ===
-def fetch_tokopedia_product_data(product_url, headers_template, show_logs=False):
+# === Step 2: Fetch Additional Product Detail from PDPGetLayoutQuery ===
+def fetch_pdp_details(product_url, headers_template, show_logs_local=False): # Tambahkan show_logs_local
+    if not product_url:
+        if show_logs_local: st.warning("URL produk kosong, tidak dapat mengambil detail PDP.")
+        return None
     try:
         parsed_url = urlparse(product_url)
         path_parts = [part for part in parsed_url.path.split('/') if part]
         if len(path_parts) < 2:
-            if show_logs: st.warning(f"URL tidak valid (path parts < 2): {product_url}")
+            if show_logs_local: st.warning(f"URL tidak valid untuk PDP (path parts < 2): {product_url}")
             return None
 
         shop_domain_val, product_key_val = path_parts[0], path_parts[1]
         ext_param_val = parse_qs(parsed_url.query).get('extParam', [''])[0]
     except Exception as e:
-        if show_logs: st.warning(f"Error parsing URL {product_url}: {e}")
+        if show_logs_local: st.warning(f"Error parsing URL untuk PDP {product_url}: {e}")
         return None
 
-    request_url_gql = "https://gql.tokopedia.com/graphql/PDPGetLayoutQuery" # Ganti nama var 'url'
-    graphql_query = """
+    request_url_pdp = "https://gql.tokopedia.com/graphql/PDPGetLayoutQuery"
+    graphql_query_pdp = """
     query PDPGetLayoutQuery($shopDomain: String, $productKey: String, $layoutID: String, $apiVersion: Float, $userLocation: pdpUserLocation, $extParam: String, $tokonow: pdpTokoNow, $deviceID: String) {
       pdpGetLayout(shopDomain: $shopDomain, productKey: $productKey, layoutID: $layoutID, apiVersion: $apiVersion, userLocation: $userLocation, extParam: $extParam, tokonow: $tokonow, deviceID: $deviceID) {
-        requestID basicInfo { # name dan pdpSession tidak lagi digunakan untuk ProductName/PriceValue
-          id: productID shopID shopName txStats { countSold } stats { countReview rating } ttsPID
+        basicInfo {
+          id: productID
+          shopID
+          shopName
+          txStats { countSold }
+          stats { countReview rating }
+          ttsPID
         }
       }
     }
-    """ # name dan pdpSession dihapus dari query PDP jika tidak ada field lain yg diambil darinya
-
+    """
     payload = [{
         "operationName": "PDPGetLayoutQuery",
         "variables": {
             "shopDomain": shop_domain_val,
             "productKey": product_key_val,
-            "layoutID": "",
-            "apiVersion": 1,
+            "layoutID": "", "apiVersion": 1,
             "tokonow": {"shopID": "", "whID": "0", "serviceType": ""},
             "deviceID": str(uuid.uuid4()),
             "userLocation": {"cityID": "176", "addressID": "", "districtID": "2274", "postalCode": "", "latlon": ""},
             "extParam": ext_param_val
         },
-        "query": graphql_query
+        "query": graphql_query_pdp
     }]
 
     try:
-        if show_logs:
-            st.write(f"--- MENGIRIM REQUEST PDP UNTUK: {product_url}")
-        response = requests.post(request_url_gql, json=payload, headers=headers_template, timeout=30)
+        if show_logs_local: st.write(f"--- MENGIRIM REQUEST PDP UNTUK: {product_url}")
+        response = requests.post(request_url_pdp, json=payload, headers=headers_template, timeout=30)
         response.raise_for_status()
-        return response.json()[0]["data"].get("pdpGetLayout")
+        data = response.json()
+        if data and isinstance(data, list) and len(data) > 0 and data[0].get('data'):
+            return data[0]['data'].get("pdpGetLayout")
+        if show_logs_local: st.warning(f"Struktur JSON response PDP tidak sesuai untuk {product_url}: {data}")
+        return None
     except requests.exceptions.RequestException as e:
-        if show_logs: st.error(f"Request PDP gagal untuk {product_url}: {e}")
+        if show_logs_local: st.error(f"Request PDP gagal untuk {product_url}: {e}")
         return None
-    except (IndexError, KeyError, json.JSONDecodeError) as e:
-        if show_logs: st.error(f"Error parsing JSON response PDP untuk {product_url}: {e}")
-        return None
-
-
-# === Step 3: Extract Data ===
-def extract_product_details(pdp_data, name_from_gql, price_text_from_gql):
-    # pdp_data adalah hasil dari fetch_tokopedia_product_data (PDP)
-    # name_from_gql dan price_text_from_gql adalah dari fetch_all_product_info_from_shop (GetShopProduct)
-    if not pdp_data: # Jika PDP gagal diambil, kita mungkin masih punya nama & harga dari GQL awal
-                     # Namun, detail lain seperti ProductID, ShopID akan hilang.
-                     # Untuk konsistensi, jika PDP gagal, anggap seluruh data produk gagal.
+    except (IndexError, KeyError, AttributeError, json.JSONDecodeError) as e:
+        if show_logs_local: st.error(f"Error parsing JSON response PDP untuk {product_url}: {e}")
         return None
 
-    details = {
-        'ProductID': get_nested_value(pdp_data, ['basicInfo', 'id']),
-        'ttsPID': get_nested_value(pdp_data, ['basicInfo', 'ttsPID']),
-        'ShopID': get_nested_value(pdp_data, ['basicInfo', 'shopID']),
-        'ShopName': get_nested_value(pdp_data, ['basicInfo', 'shopName']),
-        'CountSold': get_nested_value(pdp_data, ['basicInfo', 'txStats', 'countSold']),
-        'CountReview': get_nested_value(pdp_data, ['basicInfo', 'stats', 'countReview']),
-        'Rating': get_nested_value(pdp_data, ['basicInfo', 'stats', 'rating']),
+# === Step 3: Combine and Extract Final Data ===
+def combine_and_extract_product_data(initial_data, pdp_details_data):
+    if not pdp_details_data or not pdp_details_data.get('basicInfo'):
+        return None # Membutuhkan basicInfo dari PDP
 
-        # === PERUBAHAN: ProductName dan PriceValue diambil dari argumen ===
-        'ProductName': name_from_gql,
-        'PriceValue': price_text_from_gql
-        # === SELESAI PERUBAHAN ===
+    final_details = {
+        'ProductName': initial_data.get('name_shop'),
+        'PriceValue': initial_data.get('price_text_shop'),
+        'ProductURL': initial_data.get('url_shop'),
+        # 'ProductID_from_ShopProducts': initial_data.get('product_id_shop'), # Opsional jika ingin disimpan
+
+        'ProductID': get_nested_value(pdp_details_data, ['basicInfo', 'id']),
+        'ttsPID': get_nested_value(pdp_details_data, ['basicInfo', 'ttsPID']),
+        'ShopID': get_nested_value(pdp_details_data, ['basicInfo', 'shopID']),
+        'ShopName': get_nested_value(pdp_details_data, ['basicInfo', 'shopName']),
+        'CountSold': get_nested_value(pdp_details_data, ['basicInfo', 'txStats', 'countSold']),
+        'CountReview': get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'countReview']),
+        'Rating': get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'rating']),
     }
-
-    # Logika pdpSession tidak lagi diperlukan untuk ProductName dan PriceValue.
-    # Jika ada field lain dari pdpSession yang ingin Anda ambil, bagian itu bisa ditambahkan kembali.
-    # Berdasarkan kode sebelumnya, tidak ada field lain dari pdpSession yang diambil.
-
-    return details
+    return final_details
 
 # === Streamlit UI ===
 st.set_page_config(layout="wide")
-st.title("Tokopedia Produk Scraper")
-sid_input = st.text_input("Masukkan SID toko Tokopedia:", "14799089")
-show_logs = st.checkbox("Tampilkan log detail proses (memperlambat UI)")
+st.title("Tokopedia Produk Scraper v3")
+sid_input = st.text_input("Masukkan SID toko Tokopedia:", "14799089") # Contoh SID
+show_logs = st.checkbox("Tampilkan log detail proses (memperlambat UI)") # Variabel global untuk logging
 
 if st.button("Execute", key="execute_button"):
     if not sid_input:
@@ -213,104 +221,96 @@ if st.button("Execute", key="execute_button"):
     else:
         st.info("Memulai proses scraping...")
 
-        headers = {
-            'sec-ch-ua-platform': '"Windows"',
-            'x-version': '7d93f84',
-            'sec-ch-ua': '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
-            'x-price-center': 'true',
-            'sec-ch-ua-mobile': '?0',
-            'x-source': 'tokopedia-lite',
-            'x-tkpd-akamai': 'pdpGetLayout', # Ini untuk PDP, untuk GetShopProduct mungkin beda, tapi seringkali header umum bisa dipakai
-            'x-device': 'desktop',
+        # Header umum, bisa di-override jika perlu
+        common_headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'accept': '*/*',
             'content-type': 'application/json',
-            'x-tkpd-lite-service': 'zeus', # Sama seperti di atas
             'Origin': 'https://www.tokopedia.com',
-            'Referer': 'https://www.tokopedia.com/',
-            'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
+            'Referer': 'https://www.tokopedia.com/', # Referer umum
+            'x-source': 'tokopedia-lite', # Umumnya aman
+            'x-device': 'desktop',       # Umumnya aman
         }
 
-        # --- PERUBAHAN: Menggunakan fungsi baru dan nama variabel baru ---
-        product_initial_info_list = fetch_all_product_info_from_shop(headers, sid_input)
-        # -------------------------------------------------------------
+        # Headers spesifik untuk ShopProducts (jika ada yang berbeda)
+        headers_shop_products = common_headers.copy()
+        # headers_shop_products['x-tkpd-akamai'] = 'shopsearch' # Contoh jika perlu
 
-        if not product_initial_info_list:
-            st.warning("Tidak ada info produk awal yang ditemukan atau gagal mengambilnya.")
+        # Tahap 1: Ambil data awal dari ShopProducts
+        initial_product_list = fetch_initial_product_data_from_shop(headers_shop_products, sid_input)
+
+        if not initial_product_list:
+            st.warning("Tidak ada data awal produk yang ditemukan dari ShopProducts.")
         else:
-            st.info(f"Mengambil detail PDP untuk {len(product_initial_info_list)} produk...")
-            all_data = []
+            st.info(f"Mengambil detail tambahan (PDP) untuk {len(initial_product_list)} produk...")
+            all_combined_data = []
             
             progress_bar = st.progress(0)
             status_text = st.empty()
-            start_time = time.time()
+            start_processing_time = time.time()
 
-            # --- PERUBAHAN: Loop melalui product_initial_info_list ---
-            for i, product_info in enumerate(product_initial_info_list):
-                url_item = product_info['url']
-                name_from_gql = product_info['name_from_gql']
-                price_from_gql = product_info['price_text_from_gql']
-                # --------------------------------------------------------
-
-                pdp_layout_data = fetch_tokopedia_product_data(url_item, headers, show_logs=show_logs)
+            for i, initial_data_item in enumerate(initial_product_list):
+                product_url_for_pdp = initial_data_item.get('url_shop')
                 
-                # --- PERUBAHAN: Meneruskan nama dan harga dari GQL ke extract_product_details ---
-                if pdp_layout_data: # Hanya ekstrak jika PDP berhasil diambil
-                    data = extract_product_details(pdp_layout_data, name_from_gql, price_from_gql)
-                    if data:
-                        data['ProductURL'] = url_item # Tambahkan URL produk ke data final
-                        all_data.append(data)
-                # Jika PDP gagal, produk ini tidak akan dimasukkan ke `all_data`
-                # Alternatif: jika PDP gagal tapi ingin tetap menyimpan ProductName & PriceValue dari GQL,
-                #             bisa buat struktur data minimal di sini. Namun, umumnya kita ingin data lengkap.
-                # ---------------------------------------------------------------------------------
+                # Headers spesifik untuk PDPGetLayoutQuery
+                headers_pdp_query = common_headers.copy()
+                headers_pdp_query['x-tkpd-akamai'] = 'pdpGetLayout' # Ini penting untuk PDP
                 
-                progress_percentage = (i + 1) / len(product_initial_info_list)
-                elapsed_time = time.time() - start_time
+                pdp_details = fetch_pdp_details(product_url_for_pdp, headers_pdp_query, show_logs_local=show_logs)
+                
+                if pdp_details:
+                    combined_data = combine_and_extract_product_data(initial_data_item, pdp_details)
+                    if combined_data:
+                        all_combined_data.append(combined_data)
+                    elif show_logs:
+                        st.warning(f"Gagal menggabungkan data untuk URL: {product_url_for_pdp}. Initial: {initial_data_item}, PDP: {pdp_details}")
+                elif show_logs and product_url_for_pdp: # Hanya log jika URL ada tapi PDP gagal
+                    st.warning(f"Gagal mengambil detail PDP untuk URL: {product_url_for_pdp}")
+                
+                progress_percentage = (i + 1) / len(initial_product_list)
+                elapsed_time = time.time() - start_processing_time
                 
                 eta_str = ""
-                if i > 0 :
+                if i > 0 and progress_percentage < 1: # Hanya hitung ETA jika sudah ada item dan belum selesai
                     time_per_item = elapsed_time / (i + 1)
-                    remaining_items = len(product_initial_info_list) - (i + 1)
+                    remaining_items = len(initial_product_list) - (i + 1)
                     eta = time_per_item * remaining_items
                     eta_str = f" | ETA: {format_duration(eta)}"
-                else:
-                    eta_str = ""
-
-                progress_bar.progress(progress_percentage)
-                status_text.text(f"Memproses {i+1}/{len(product_initial_info_list)} produk... Waktu berjalan: {format_duration(elapsed_time)}{eta_str}")
                 
-                time.sleep(0.1) # Jeda antar request PDP
+                progress_bar.progress(progress_percentage)
+                status_text.text(f"Memproses {i+1}/{len(initial_product_list)} produk... Waktu berjalan: {format_duration(elapsed_time)}{eta_str}")
+                
+                time.sleep(0.2) # Jeda antar request PDP (bisa disesuaikan)
 
-            total_elapsed_time = time.time() - start_time
-            status_text.text(f"Selesai! Total waktu pemrosesan: {format_duration(total_elapsed_time)}.")
+            total_processing_time = time.time() - start_processing_time
+            status_text.text(f"Selesai! Total waktu pemrosesan detail: {format_duration(total_processing_time)}.")
 
-            if all_data:
-                df_raw = pd.DataFrame(all_data)
+            if all_combined_data:
+                df_final = pd.DataFrame(all_combined_data)
 
                 desired_column_order = [
                     'ShopID', 'ShopName', 'ProductID', 'ttsPID', 'ProductName',
                     'PriceValue', 'CountSold', 'CountReview', 'Rating', 'ProductURL'
                 ]
-                current_columns = [col for col in desired_column_order if col in df_raw.columns]
-                for col in df_raw.columns:
-                    if col not in current_columns:
-                        current_columns.append(col)
+                final_columns_ordered = [col for col in desired_column_order if col in df_final.columns]
+                for col in df_final.columns: # Tambahkan kolom yang tidak ada di desired_column_order ke akhir
+                    if col not in final_columns_ordered:
+                        final_columns_ordered.append(col)
                 
-                df = df_raw[current_columns]
+                df_final = df_final[final_columns_ordered]
 
-                st.success(f"Berhasil mengambil {len(df)} produk dari {len(product_initial_info_list)} URL yang diproses.")
-                st.dataframe(df)
+                st.success(f"Berhasil mengambil dan menggabungkan data untuk {len(df_final)} produk.")
+                st.dataframe(df_final)
 
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df.to_excel(writer, index=False, sheet_name='Produk')
+                output_excel = io.BytesIO()
+                with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
+                    df_final.to_excel(writer, index=False, sheet_name='Produk')
                 
                 st.download_button(
                     label="Download Data Excel",
-                    data=output.getvalue(),
-                    file_name=f"tokopedia_produk_sid_{sid_input}.xlsx",
+                    data=output_excel.getvalue(),
+                    file_name=f"tokopedia_produk_sid_{sid_input}_final.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             else:
-                st.warning("Tidak ada data produk yang berhasil diekstrak (kemungkinan karena gagal mengambil detail PDP).")
+                st.warning("Tidak ada data produk final yang berhasil diekstrak dan digabungkan.")
