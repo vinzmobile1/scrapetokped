@@ -112,6 +112,7 @@ def fetch_tokopedia_product_data(product_url, headers_template):
     }]
 
     try:
+        st.write(f"--- MENGIRIM REQUEST UNTUK: {product_url}")
         response = requests.post(request_url, json=payload, headers=headers_template, timeout=30)
         response.raise_for_status()
         return response.json()[0]["data"].get("pdpGetLayout")
