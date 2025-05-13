@@ -278,7 +278,7 @@ if st.button("Execute", key="execute_button"):
                     eta_str = f" | ETA: {format_duration(eta)}"
                 
                 progress_bar.progress(progress_percentage)
-                status_text.text(f"Memproses {i+1}/{len(initial_product_list)} produk... Waktu berjalan: {format_duration(elapsed_time)}{eta_str}")
+                status_text.text(f"Memproses {i+1}/{len(initial_product_list)} produk... | Waktu berjalan: {format_duration(elapsed_time)}{eta_str}")
                 
                 time.sleep(0.1) # Jeda antar request PDP (bisa disesuaikan)
 
