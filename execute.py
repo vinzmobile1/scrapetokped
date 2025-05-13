@@ -210,7 +210,7 @@ def combine_and_extract_product_data(initial_data, pdp_details_data):
     return final_details
 
 # === Streamlit UI ===
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Naufal - Scrape Tokopedia")
 st.title("Tokopedia Produk Scraper v3")
 sid_input = st.text_input("Masukkan SID toko Tokopedia:", "14799089") # Contoh SID
 show_logs = st.checkbox("Tampilkan log detail proses (memperlambat UI)") # Variabel global untuk logging
