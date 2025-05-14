@@ -154,6 +154,7 @@ def fetch_pdp_details(product_url, headers_template, show_logs_local=False): # T
           txStats { countSold }
           stats { countReview rating }
           ttsPID
+          createdAt
         }
       }
     }
