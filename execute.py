@@ -300,7 +300,30 @@ if st.button("Execute", key="execute_button"):
                 df_final = df_final[final_columns_ordered]
 
                 st.success(f"Berhasil mengambil dan menggabungkan data untuk {len(df_final)} produk.")
-                st.dataframe(df_final, hide_index=True)
+               # --- PERUBAHAN UNTUK NAMA KOLOM TAMPILAN ---
+                # Buat dictionary untuk mapping nama kolom
+                column_rename_map = {
+                    'ShopID': "Shop ID",
+                    'ShopName': "Shop Name",
+                    'ProductID': "Product ID",
+                    'ttsPID': "SKU",
+                    'ProductName': "Product Name",
+                    'PriceValue': "Price",
+                    'CountSold': "Count Sold",
+                    'CountReview': "Count Review",
+                    'Rating': "Rating",
+                    'ProductURL': "Product URL"
+                }
+
+                # Buat salinan DataFrame untuk tampilan dan rename kolomnya
+                # Pastikan hanya me-rename kolom yang ada di df_final
+                df_display = df_final.copy()
+                # Filter rename_map agar hanya berisi kolom yang ada di df_display
+                actual_rename_map = {k: v for k, v in column_rename_map.items() if k in df_display.columns}
+                df_display.rename(columns=actual_rename_map, inplace=True)
+                
+                st.dataframe(df_display, hide_index=True)
+                # --- SELESAI PERUBAHAN NAMA KOLOM TAMPILAN ---
 
                 output_excel = io.BytesIO()
                 with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
