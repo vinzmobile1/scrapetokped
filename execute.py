@@ -196,17 +196,17 @@ def combine_and_extract_product_data(initial_data, pdp_details_data):
 
     final_details = {
         'ProductName': initial_data.get('name_shop'),
-        'PriceValue': initial_data.get('price_text_shop'),
+        'PriceValue': int(initial_data.get('price_text_shop')),
         'ProductURL': initial_data.get('url_shop'),
         # 'ProductID_from_ShopProducts': initial_data.get('product_id_shop'), # Opsional jika ingin disimpan
 
-        'ProductID': get_nested_value(pdp_details_data, ['basicInfo', 'id']),
-        'ttsPID': get_nested_value(pdp_details_data, ['basicInfo', 'ttsPID']),
-        'ShopID': get_nested_value(pdp_details_data, ['basicInfo', 'shopID']),
+        'ProductID': str(get_nested_value(pdp_details_data, ['basicInfo', 'id'])),
+        'ttsPID': str(get_nested_value(pdp_details_data, ['basicInfo', 'ttsPID'])),
+        'ShopID': str(get_nested_value(pdp_details_data, ['basicInfo', 'shopID'])),
         'ShopName': get_nested_value(pdp_details_data, ['basicInfo', 'shopName']),
-        'CountSold': get_nested_value(pdp_details_data, ['basicInfo', 'txStats', 'countSold']),
-        'CountReview': get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'countReview']),
-        'Rating': get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'rating']),
+        'CountSold': int(get_nested_value(pdp_details_data, ['basicInfo', 'txStats', 'countSold'])),
+        'CountReview': int(get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'countReview'])),
+        'Rating': str(get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'rating'])),
         'createdAt': get_nested_value(pdp_details_data, ['basicInfo', 'createdAt']),
     }
     return final_details
