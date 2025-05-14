@@ -119,7 +119,7 @@ def fetch_initial_product_data_from_shop(headers, sid):
         if not result_gql.get('links', {}).get('next'):
             break
         page += 1
-        time.sleep(0.5) # Jeda antar halaman ShopProducts
+        time.sleep(1) # Jeda antar halaman ShopProducts
 
     total_fetch_time = time.time() - start_fetch_time
     page_progress_text.text(f"Selesai mengambil data awal dari ShopProducts. Total {len(initial_product_data_list)} produk ditemukan dalam {format_duration(total_fetch_time)}.")
@@ -206,6 +206,7 @@ def combine_and_extract_product_data(initial_data, pdp_details_data):
         'CountSold': get_nested_value(pdp_details_data, ['basicInfo', 'txStats', 'countSold']),
         'CountReview': get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'countReview']),
         'Rating': get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'rating']),
+        'createdAt': get_nested_value(pdp_details_data, ['basicInfo', 'createdAt']),
     }
     return final_details
 
@@ -312,7 +313,8 @@ if st.button("Execute", key="execute_button"):
                     'CountSold': "Count Sold",
                     'CountReview': "Count Review",
                     'Rating': "Rating",
-                    'ProductURL': "Product URL"
+                    'ProductURL': "Product URL",
+                    'createdAt' : "createdAt"
                 }
 
                 # Buat salinan DataFrame untuk tampilan dan rename kolomnya
