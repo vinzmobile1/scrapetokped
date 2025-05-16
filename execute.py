@@ -196,7 +196,7 @@ def combine_and_extract_product_data(initial_data, pdp_details_data):
 
     final_details = {
         'ProductName': initial_data.get('name_shop'),
-        'PriceValue': int(initial_data.get('price_text_shop')),
+        'PriceValue': initial_data.get('price_text_shop'),
         'ProductURL': initial_data.get('url_shop'),
         # 'ProductID_from_ShopProducts': initial_data.get('product_id_shop'), # Opsional jika ingin disimpan
 
