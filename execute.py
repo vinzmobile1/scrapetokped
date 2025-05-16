@@ -126,74 +126,68 @@ def fetch_initial_product_data_from_shop(headers, sid):
     return initial_product_data_list
 
 # === Step 2: Fetch Additional Product Detail from PDPGetLayoutQuery ===
-def fetch_pdp_details_with_retry(product_url, headers_template, show_logs_local=False, max_retry=3):
+def fetch_pdp_details(product_url, headers_template, show_logs_local=False): # Tambahkan show_logs_local
+    if not product_url:
+        if show_logs_local: st.warning("URL produk kosong, tidak dapat mengambil detail PDP.")
+        return None
+    try:
+        parsed_url = urlparse(product_url)
+        path_parts = [part for part in parsed_url.path.split('/') if part]
+        if len(path_parts) < 2:
+            if show_logs_local: st.warning(f"URL tidak valid untuk PDP (path parts < 2): {product_url}")
+            return None
+
+        shop_domain_val, product_key_val = path_parts[0], path_parts[1]
+        ext_param_val = parse_qs(parsed_url.query).get('extParam', [''])[0]
+    except Exception as e:
+        if show_logs_local: st.warning(f"Error parsing URL untuk PDP {product_url}: {e}")
+        return None
+
+    request_url_pdp = "https://gql.tokopedia.com/graphql/PDPGetLayoutQuery"
+    graphql_query_pdp = """
+    query PDPGetLayoutQuery($shopDomain: String, $productKey: String, $layoutID: String, $apiVersion: Float, $userLocation: pdpUserLocation, $extParam: String, $tokonow: pdpTokoNow, $deviceID: String) {
+      pdpGetLayout(shopDomain: $shopDomain, productKey: $productKey, layoutID: $layoutID, apiVersion: $apiVersion, userLocation: $userLocation, extParam: $extParam, tokonow: $tokonow, deviceID: $deviceID) {
+        basicInfo {
+          id: productID
+          shopID
+          shopName
+          txStats { countSold }
+          stats { countReview rating }
+          ttsPID
+          createdAt
+        }
+      }
+    }
     """
-    Ambil detail PDP dengan retry dan backoff.
-    """
-    device_id = str(uuid.uuid4())  # Gunakan deviceID tetap untuk sesi ini
+    payload = [{
+        "operationName": "PDPGetLayoutQuery",
+        "variables": {
+            "shopDomain": shop_domain_val,
+            "productKey": product_key_val,
+            "layoutID": "", "apiVersion": 1,
+            "tokonow": {"shopID": "", "whID": "0", "serviceType": ""},
+            "deviceID": str(uuid.uuid4()),
+            "userLocation": {"cityID": "176", "addressID": "", "districtID": "2274", "postalCode": "", "latlon": ""},
+            "extParam": ext_param_val
+        },
+        "query": graphql_query_pdp
+    }]
 
-    for attempt in range(max_retry):
-        try:
-            if not product_url:
-                return None
-            parsed_url = urlparse(product_url)
-            path_parts = [part for part in parsed_url.path.split('/') if part]
-            if len(path_parts) < 2:
-                return None
-
-            shop_domain_val, product_key_val = path_parts[0], path_parts[1]
-            ext_param_val = parse_qs(parsed_url.query).get('extParam', [''])[0]
-
-            payload = [{
-                "operationName": "PDPGetLayoutQuery",
-                "variables": {
-                    "shopDomain": shop_domain_val,
-                    "productKey": product_key_val,
-                    "layoutID": "", "apiVersion": 1,
-                    "tokonow": {"shopID": "", "whID": "0", "serviceType": ""},
-                    "deviceID": device_id,
-                    "userLocation": {
-                        "cityID": "176", "addressID": "", "districtID": "2274", "postalCode": "", "latlon": ""
-                    },
-                    "extParam": ext_param_val
-                },
-                "query": """
-                query PDPGetLayoutQuery($shopDomain: String, $productKey: String, $layoutID: String, $apiVersion: Float, $userLocation: pdpUserLocation, $extParam: String, $tokonow: pdpTokoNow, $deviceID: String) {
-                  pdpGetLayout(shopDomain: $shopDomain, productKey: $productKey, layoutID: $layoutID, apiVersion: $apiVersion, userLocation: $userLocation, extParam: $extParam, tokonow: $tokonow, deviceID: $deviceID) {
-                    basicInfo {
-                      id: productID
-                      shopID
-                      shopName
-                      txStats { countSold }
-                      stats { countReview rating }
-                      ttsPID
-                      createdAt
-                    }
-                  }
-                }
-                """
-            }]
-
-            request_url_pdp = "https://gql.tokopedia.com/graphql/PDPGetLayoutQuery"
-            response = requests.post(request_url_pdp, json=payload, headers=headers_template, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            if data and isinstance(data, list) and data[0].get('data'):
-                return data[0]['data'].get("pdpGetLayout")
-            if show_logs_local:
-                st.warning(f"Struktur JSON response PDP tidak sesuai pada percobaan {attempt+1}: {data}")
-        except Exception as e:
-            if show_logs_local:
-                st.warning(f"[Percobaan {attempt+1}] Gagal ambil PDP: {e}")
-        wait_time = 2 * (attempt + 1)
-        if show_logs_local:
-            st.info(f"Menunggu {wait_time} detik sebelum mencoba lagi...")
-        time.sleep(wait_time)
-
-    if show_logs_local:
-        st.error(f"Gagal mengambil detail PDP setelah {max_retry} percobaan untuk URL: {product_url}")
-    return None
-
+    try:
+        if show_logs_local: st.write(f"--- MENGIRIM REQUEST PDP UNTUK: {product_url}")
+        response = requests.post(request_url_pdp, json=payload, headers=headers_template, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        if data and isinstance(data, list) and len(data) > 0 and data[0].get('data'):
+            return data[0]['data'].get("pdpGetLayout")
+        if show_logs_local: st.warning(f"Struktur JSON response PDP tidak sesuai untuk {product_url}: {data}")
+        return None
+    except requests.exceptions.RequestException as e:
+        if show_logs_local: st.error(f"Request PDP gagal untuk {product_url}: {e}")
+        return None
+    except (IndexError, KeyError, AttributeError, json.JSONDecodeError) as e:
+        if show_logs_local: st.error(f"Error parsing JSON response PDP untuk {product_url}: {e}")
+        return None
 
 # === Step 3: Combine and Extract Final Data ===
 def combine_and_extract_product_data(initial_data, pdp_details_data):
@@ -264,8 +258,7 @@ if st.button("Execute", key="execute_button"):
                 headers_pdp_query = common_headers.copy()
                 headers_pdp_query['x-tkpd-akamai'] = 'pdpGetLayout' # Ini penting untuk PDP
                 
-                pdp_details = fetch_pdp_details_with_retry(product_url_for_pdp, headers_pdp_query, show_logs_local=st.session_state.show_logs_value)
-
+                pdp_details = fetch_pdp_details(product_url_for_pdp, headers_pdp_query, show_logs_local=show_logs)
                 
                 if pdp_details:
                     combined_data = combine_and_extract_product_data(initial_data_item, pdp_details)
