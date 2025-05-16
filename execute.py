@@ -8,7 +8,6 @@ import time
 import io
 
 # === Helper Function ===
-# ... (kode helper Anda tetap sama) ...
 def get_nested_value(data_dict, keys, default=None):
     current = data_dict
     for key in keys:
@@ -33,7 +32,7 @@ def format_duration(seconds):
         return f"{hours:.1f} jam"
 
 # === Step 1: Fetch Initial Product Data from ShopProducts ===
-def fetch_initial_product_data_from_shop(headers, sid, show_logs_local): # Tambahkan show_logs_local
+def fetch_initial_product_data_from_shop(headers, sid, show_logs_local):
     url_gql_shop_products = "https://gql.tokopedia.com/graphql/ShopProducts"
 
     def get_payload(page):
@@ -62,14 +61,20 @@ def fetch_initial_product_data_from_shop(headers, sid, show_logs_local): # Tamba
 
     initial_product_data_list = []
     page = 1
-    st.write("Memulai pengambilan data awal produk dari ShopProducts...")
-    page_progress_text = st.empty()
+    # Ensure st.write/st.empty are only called if not already finished with this stage
+    if 'page_progress_text_main_fetch' not in st.session_state:
+        st.session_state.page_progress_text_main_fetch = st.empty()
+    if 'initial_fetch_status_write' not in st.session_state:
+        st.session_state.initial_fetch_status_write = st.empty()
+
+    st.session_state.initial_fetch_status_write.write("Memulai pengambilan data awal produk dari ShopProducts...")
+    
     start_fetch_time = time.time()
     page_count = 0
     while True:
         page_count += 1
         elapsed_fetch_time = time.time() - start_fetch_time
-        page_progress_text.text(f"Mengambil data awal dari halaman {page_count}... | Waktu berjalan: {format_duration(elapsed_fetch_time)}")
+        st.session_state.page_progress_text_main_fetch.text(f"Mengambil data awal dari halaman {page_count}... | Waktu berjalan: {format_duration(elapsed_fetch_time)}")
 
         try:
             response = requests.post(url_gql_shop_products, headers=headers, json=get_payload(page), timeout=30)
@@ -82,7 +87,7 @@ def fetch_initial_product_data_from_shop(headers, sid, show_logs_local): # Tamba
             gql_response_data = response.json()
             if not gql_response_data or not isinstance(gql_response_data, list) or not gql_response_data[0].get('data'):
                 st.warning(f"Struktur respons ShopProducts tidak valid dari halaman {page}.")
-                if show_logs_local: st.json(gql_response_data) # Gunakan show_logs_local
+                if show_logs_local: st.json(gql_response_data)
                 break
 
             result_gql = gql_response_data[0]['data']['GetShopProduct']
@@ -99,7 +104,7 @@ def fetch_initial_product_data_from_shop(headers, sid, show_logs_local): # Tamba
             initial_product_data_list.extend(products_on_page)
         except (IndexError, KeyError, TypeError, json.JSONDecodeError) as e:
             st.error(f"Error parsing JSON dari ShopProducts halaman {page}: {e}")
-            if show_logs_local: st.json(response.text) # Gunakan show_logs_local
+            if show_logs_local: st.json(response.text)
             break
 
         if not result_gql.get('links', {}).get('next'):
@@ -108,12 +113,12 @@ def fetch_initial_product_data_from_shop(headers, sid, show_logs_local): # Tamba
         time.sleep(1)
 
     total_fetch_time = time.time() - start_fetch_time
-    page_progress_text.text(f"Selesai mengambil data awal dari ShopProducts. Total {len(initial_product_data_list)} produk ditemukan dalam {format_duration(total_fetch_time)}.")
+    st.session_state.page_progress_text_main_fetch.text(f"Selesai mengambil data awal dari ShopProducts. Total {len(initial_product_data_list)} produk ditemukan dalam {format_duration(total_fetch_time)}.")
+    st.session_state.initial_fetch_status_write.empty() # Clear the "Memulai..." message
     return initial_product_data_list
 
 # === Step 2: Fetch Additional Product Detail from PDPGetLayoutQuery ===
 def fetch_pdp_details(product_url, headers_template, show_logs_local=False):
-    # ... (kode fetch_pdp_details Anda tetap sama, pastikan show_logs_local digunakan dengan benar) ...
     if not product_url:
         if show_logs_local: st.warning("URL produk kosong, tidak dapat mengambil detail PDP.")
         return None
@@ -161,7 +166,7 @@ def fetch_pdp_details(product_url, headers_template, show_logs_local=False):
     }]
 
     try:
-        if show_logs_local: st.write(f"--- MENGIRIM REQUEST PDP UNTUK: {product_url}")
+        if show_logs_local: st.write(f"--- MENGIRIM REQUEST PDP UNTUK: {product_url}") # This might cause issues if show_logs changes mid-process
         response = requests.post(request_url_pdp, json=payload, headers=headers_template, timeout=30)
         response.raise_for_status()
         data = response.json()
@@ -178,7 +183,6 @@ def fetch_pdp_details(product_url, headers_template, show_logs_local=False):
 
 # === Step 3: Combine and Extract Final Data ===
 def combine_and_extract_product_data(initial_data, pdp_details_data):
-    # ... (kode combine_and_extract_product_data Anda tetap sama) ...
     if not pdp_details_data or not pdp_details_data.get('basicInfo'):
         return None
 
@@ -190,9 +194,9 @@ def combine_and_extract_product_data(initial_data, pdp_details_data):
         'ttsPID': str(get_nested_value(pdp_details_data, ['basicInfo', 'ttsPID'])),
         'ShopID': str(get_nested_value(pdp_details_data, ['basicInfo', 'shopID'])),
         'ShopName': get_nested_value(pdp_details_data, ['basicInfo', 'shopName']),
-        'CountSold': int(get_nested_value(pdp_details_data, ['basicInfo', 'txStats', 'countSold'],0)), # default to 0
-        'CountReview': int(get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'countReview'],0)), # default to 0
-        'Rating': str(get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'rating'],0)), # default to 0
+        'CountSold': int(get_nested_value(pdp_details_data, ['basicInfo', 'txStats', 'countSold'],0)),
+        'CountReview': int(get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'countReview'],0)),
+        'Rating': str(get_nested_value(pdp_details_data, ['basicInfo', 'stats', 'rating'],0)),
         'createdAt': get_nested_value(pdp_details_data, ['basicInfo', 'createdAt']),
     }
     return final_details
@@ -212,64 +216,74 @@ if 'all_combined_data' not in st.session_state:
     st.session_state.all_combined_data = []
 if 'current_item_index' not in st.session_state:
     st.session_state.current_item_index = 0
-if 'log_messages' not in st.session_state: # Untuk log yang persisten
-    st.session_state.log_messages = []
-if 'sid_input_value' not in st.session_state: # Simpan SID input
-    st.session_state.sid_input_value = "14799089" # Contoh SID
+# if 'log_messages' not in st.session_state: # Log messages can be tricky with reruns if not handled carefully
+# st.session_state.log_messages = []
+if 'sid_input_value' not in st.session_state:
+    st.session_state.sid_input_value = "14799089"
 
-# Gunakan nilai dari session state untuk input dan checkbox
-sid_input = st.text_input(
+sid_input_val = st.text_input( # Use a different variable name to avoid confusion if needed
     "Masukkan SID toko Tokopedia:",
     value=st.session_state.sid_input_value,
-    key="sid_input_key" # Beri key agar Streamlit bisa track
+    key="sid_input_key",
+    disabled=st.session_state.scraping_in_progress # Disable when scraping
 )
-# Update session state jika input berubah
-st.session_state.sid_input_value = sid_input
+if sid_input_val != st.session_state.sid_input_value: # Only update if changed by user
+    st.session_state.sid_input_value = sid_input_val
+    # Optionally reset if SID changes mid-setup, though usually execute handles this
+    # st.session_state.scraping_finished = False 
+    # st.session_state.all_combined_data = []
 
 
-# --- KELOLA SHOW_LOGS DENGAN SESSION STATE ---
 if 'show_logs_value' not in st.session_state:
     st.session_state.show_logs_value = False
 
-show_logs = st.checkbox(
+show_logs_val = st.checkbox( # Use a different variable name
     "Tampilkan log detail proses (memperlambat UI)",
     value=st.session_state.show_logs_value,
     key="show_logs_checkbox"
 )
-# Update session state jika checkbox berubah
-st.session_state.show_logs_value = show_logs
-# --- SELESAI KELOLA SHOW_LOGS ---
+if show_logs_val != st.session_state.show_logs_value:
+    st.session_state.show_logs_value = show_logs_val
+    st.rerun() # Rerun if log visibility changes to update display immediately
 
 
-# Tombol Execute
 execute_button_col, reset_button_col = st.columns(2)
 with execute_button_col:
     if st.button("Execute", key="execute_button", disabled=st.session_state.scraping_in_progress):
-        if not sid_input:
+        if not st.session_state.sid_input_value: # Check session state value
             st.error("SID Toko tidak boleh kosong!")
         else:
-            # Reset state sebelum memulai scraping baru
             st.session_state.scraping_in_progress = True
             st.session_state.scraping_finished = False
             st.session_state.initial_product_list = []
             st.session_state.all_combined_data = []
             st.session_state.current_item_index = 0
-            st.session_state.log_messages = []
+            # st.session_state.log_messages = []
             st.info("Memulai proses scraping...")
-            # Panggil re-run agar proses dimulai di iterasi berikutnya
-            st.experimental_rerun()
+            if 'page_progress_text_main_fetch' in st.session_state: # Clear old placeholders
+                st.session_state.page_progress_text_main_fetch.empty()
+                del st.session_state.page_progress_text_main_fetch
+            if 'initial_fetch_status_write' in st.session_state:
+                st.session_state.initial_fetch_status_write.empty()
+                del st.session_state.initial_fetch_status_write
+            st.rerun() # Use st.rerun()
 
 with reset_button_col:
     if st.button("Reset Proses", key="reset_button"):
-        # Reset semua state yang relevan
         st.session_state.scraping_in_progress = False
         st.session_state.scraping_finished = False
         st.session_state.initial_product_list = []
         st.session_state.all_combined_data = []
         st.session_state.current_item_index = 0
-        st.session_state.log_messages = []
+        # st.session_state.log_messages = []
+        if 'page_progress_text_main_fetch' in st.session_state: # Clear old placeholders
+            st.session_state.page_progress_text_main_fetch.empty()
+            del st.session_state.page_progress_text_main_fetch
+        if 'initial_fetch_status_write' in st.session_state:
+            st.session_state.initial_fetch_status_write.empty()
+            del st.session_state.initial_fetch_status_write
         st.info("Proses direset. Silakan masukkan SID baru dan Execute.")
-        st.experimental_rerun()
+        st.rerun() # Use st.rerun()
 
 # --- LOGIKA SCRAPING UTAMA ---
 if st.session_state.scraping_in_progress and not st.session_state.scraping_finished:
@@ -282,120 +296,126 @@ if st.session_state.scraping_in_progress and not st.session_state.scraping_finis
     headers_pdp_query = common_headers.copy()
     headers_pdp_query['x-tkpd-akamai'] = 'pdpGetLayout'
 
-    # Tahap 1: Ambil data awal (jika belum ada)
-    if not st.session_state.initial_product_list:
+    if not st.session_state.initial_product_list and st.session_state.current_item_index == 0 : # Only fetch if not already fetched
         st.session_state.initial_product_list = fetch_initial_product_data_from_shop(
             headers_shop_products,
-            st.session_state.sid_input_value, # Gunakan SID dari session state
-            st.session_state.show_logs_value # Gunakan show_logs dari session state
+            st.session_state.sid_input_value,
+            st.session_state.show_logs_value
         )
         if not st.session_state.initial_product_list:
             st.warning("Tidak ada data awal produk yang ditemukan dari ShopProducts.")
-            st.session_state.scraping_in_progress = False # Hentikan jika tidak ada data
-            st.session_state.scraping_finished = True # Anggap selesai
-            st.experimental_rerun() # Perbarui UI
+            st.session_state.scraping_in_progress = False
+            st.session_state.scraping_finished = True
+            st.rerun() # Use st.rerun()
         else:
             st.info(f"Mengambil detail tambahan (PDP) untuk {len(st.session_state.initial_product_list)} produk...")
-            st.session_state.current_item_index = 0 # Mulai dari awal untuk PDP
+            st.session_state.current_item_index = 0 # Ensure it's 0 before starting PDP
+            st.rerun() # Rerun to start PDP processing part cleanly
 
-    # Tahap 2 & 3: Proses PDP dan gabungkan data (jika ada data awal)
-    if st.session_state.initial_product_list:
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        start_processing_time = time.time() # Ini bisa di-refine jika ingin melanjutkan dari tengah
+    if st.session_state.initial_product_list and st.session_state.current_item_index < len(st.session_state.initial_product_list):
+        # This block will now execute after the rerun from initial fetch completion
+        progress_bar_pdp = st.progress(0, text="Memulai proses PDP...") # Assign to a variable
+        status_text_pdp = st.empty() # Assign to a variable
+        
+        # Use a different start time for PDP processing, initialized if current_item_index is 0
+        if 'pdp_processing_start_time' not in st.session_state or st.session_state.current_item_index == 0:
+            st.session_state.pdp_processing_start_time = time.time()
 
-        # Loop melalui item yang belum diproses
         initial_list_len = len(st.session_state.initial_product_list)
-        while st.session_state.current_item_index < initial_list_len:
-            i = st.session_state.current_item_index
-            initial_data_item = st.session_state.initial_product_list[i]
-            product_url_for_pdp = initial_data_item.get('url_shop')
+        
+        # Process one item per run to keep UI responsive and avoid long script runs
+        i = st.session_state.current_item_index
+        initial_data_item = st.session_state.initial_product_list[i]
+        product_url_for_pdp = initial_data_item.get('url_shop')
 
-            pdp_details = fetch_pdp_details(
-                product_url_for_pdp,
-                headers_pdp_query,
-                show_logs_local=st.session_state.show_logs_value # Gunakan show_logs dari session state
-            )
+        pdp_details = fetch_pdp_details(
+            product_url_for_pdp,
+            headers_pdp_query,
+            show_logs_local=st.session_state.show_logs_value
+        )
 
-            if pdp_details:
-                combined_data = combine_and_extract_product_data(initial_data_item, pdp_details)
-                if combined_data:
-                    st.session_state.all_combined_data.append(combined_data)
-                elif st.session_state.show_logs_value:
-                    st.warning(f"Gagal menggabungkan data untuk URL: {product_url_for_pdp}. Initial: {initial_data_item}, PDP: {pdp_details}")
-            elif st.session_state.show_logs_value and product_url_for_pdp:
-                st.warning(f"Gagal mengambil detail PDP untuk URL: {product_url_for_pdp}")
+        if pdp_details:
+            combined_data = combine_and_extract_product_data(initial_data_item, pdp_details)
+            if combined_data:
+                st.session_state.all_combined_data.append(combined_data)
+            elif st.session_state.show_logs_value:
+                st.warning(f"Gagal menggabungkan data untuk URL: {product_url_for_pdp}. Initial: {initial_data_item}, PDP: {pdp_details}")
+        elif st.session_state.show_logs_value and product_url_for_pdp:
+            st.warning(f"Gagal mengambil detail PDP untuk URL: {product_url_for_pdp}")
 
-            st.session_state.current_item_index += 1
-            progress_percentage = st.session_state.current_item_index / initial_list_len
-            elapsed_time = time.time() - start_processing_time # Perlu diatur ulang jika resume
-            
-            eta_str = ""
-            if st.session_state.current_item_index > 0 and progress_percentage < 1:
-                time_per_item = elapsed_time / st.session_state.current_item_index
-                remaining_items = initial_list_len - st.session_state.current_item_index
-                eta = time_per_item * remaining_items
-                eta_str = f" | ETA: {format_duration(eta)}"
-            
-            progress_bar.progress(progress_percentage)
-            status_text.text(f"Memproses {st.session_state.current_item_index}/{initial_list_len} produk... | Waktu berjalan: {format_duration(elapsed_time)}{eta_str}")
-            time.sleep(0.1)
+        st.session_state.current_item_index += 1
+        progress_percentage = st.session_state.current_item_index / initial_list_len
+        elapsed_time_pdp = time.time() - st.session_state.pdp_processing_start_time
+        
+        eta_str = ""
+        if st.session_state.current_item_index > 0 and progress_percentage < 1:
+            time_per_item = elapsed_time_pdp / st.session_state.current_item_index
+            remaining_items = initial_list_len - st.session_state.current_item_index
+            eta = time_per_item * remaining_items
+            eta_str = f" | ETA: {format_duration(eta)}"
+        
+        progress_bar_pdp.progress(progress_percentage, text=f"Memproses PDP {st.session_state.current_item_index}/{initial_list_len}...")
+        status_text_pdp.text(f"Memproses {st.session_state.current_item_index}/{initial_list_len} produk... | Waktu berjalan (PDP): {format_duration(elapsed_time_pdp)}{eta_str}")
+        
+        time.sleep(0.1) # Keep the small delay
 
-            # Jika Anda ingin lebih responsif terhadap perubahan show_logs selama proses PDP,
-            # Anda mungkin perlu memanggil st.experimental_rerun() di sini,
-            # tetapi itu akan membuat ETA dan waktu berjalan direset setiap kali.
-            # Biasanya, lebih baik biarkan selesai atau tambahkan tombol 'Pause/Resume'.
-
-        # Setelah loop selesai
-        st.session_state.scraping_finished = True
-        st.session_state.scraping_in_progress = False
-        total_processing_time = time.time() - start_processing_time # Perlu diatur ulang jika resume
-        status_text.text(f"Selesai! Total waktu pemrosesan detail: {format_duration(total_processing_time)}.")
-        st.experimental_rerun() # Perbarui UI untuk menampilkan hasil
+        if st.session_state.current_item_index < initial_list_len:
+            st.rerun() # Rerun to process next item
+        else: # All PDP items processed
+            st.session_state.scraping_finished = True
+            st.session_state.scraping_in_progress = False
+            total_processing_time_pdp = time.time() - st.session_state.pdp_processing_start_time
+            status_text_pdp.text(f"Selesai! Total waktu pemrosesan detail (PDP): {format_duration(total_processing_time_pdp)}.")
+            # Clean up PDP start time
+            if 'pdp_processing_start_time' in st.session_state:
+                del st.session_state.pdp_processing_start_time
+            st.rerun() # Rerun to display final results
 
 # --- TAMPILKAN HASIL JIKA SELESAI ---
-if st.session_state.scraping_finished and st.session_state.all_combined_data:
-    df_final = pd.DataFrame(st.session_state.all_combined_data)
-    desired_column_order = [
-        'ShopID', 'ShopName', 'ProductID', 'ttsPID', 'ProductName',
-        'PriceValue', 'CountSold', 'CountReview', 'Rating', 'ProductURL', 'createdAt'
-    ]
-    # Pastikan semua kolom ada, jika tidak, tambahkan yang hilang dari df_final.columns
-    final_columns_ordered = [col for col in desired_column_order if col in df_final.columns]
-    for col in df_final.columns:
-        if col not in final_columns_ordered:
-            final_columns_ordered.append(col)
-    
-    df_final = df_final[final_columns_ordered]
+if st.session_state.scraping_finished:
+    if st.session_state.all_combined_data:
+        df_final = pd.DataFrame(st.session_state.all_combined_data)
+        desired_column_order = [
+            'ShopID', 'ShopName', 'ProductID', 'ttsPID', 'ProductName',
+            'PriceValue', 'CountSold', 'CountReview', 'Rating', 'ProductURL', 'createdAt'
+        ]
+        final_columns_ordered = [col for col in desired_column_order if col in df_final.columns]
+        for col in df_final.columns:
+            if col not in final_columns_ordered:
+                final_columns_ordered.append(col)
+        
+        df_final = df_final[final_columns_ordered]
 
-    st.success(f"Berhasil mengambil dan menggabungkan data untuk {len(df_final)} produk.")
-    column_rename_map = {
-        'ShopID': "Shop ID", 'ShopName': "Shop Name", 'ProductID': "Product ID",
-        'ttsPID': "SKU", 'ProductName': "Product Name", 'PriceValue': "Price",
-        'CountSold': "Count Sold", 'CountReview': "Count Review", 'Rating': "Rating",
-        'ProductURL': "Product URL", 'createdAt' : "createdAt"
-    }
-    df_display = df_final.copy()
-    actual_rename_map = {k: v for k, v in column_rename_map.items() if k in df_display.columns}
-    df_display.rename(columns=actual_rename_map, inplace=True)
-    
-    st.dataframe(df_display, hide_index=True)
+        st.success(f"Berhasil mengambil dan menggabungkan data untuk {len(df_final)} produk.")
+        column_rename_map = {
+            'ShopID': "Shop ID", 'ShopName': "Shop Name", 'ProductID': "Product ID",
+            'ttsPID': "SKU", 'ProductName': "Product Name", 'PriceValue': "Price",
+            'CountSold': "Count Sold", 'CountReview': "Count Review", 'Rating': "Rating",
+            'ProductURL': "Product URL", 'createdAt' : "createdAt"
+        }
+        df_display = df_final.copy()
+        actual_rename_map = {k: v for k, v in column_rename_map.items() if k in df_display.columns}
+        df_display.rename(columns=actual_rename_map, inplace=True)
+        
+        st.dataframe(df_display, hide_index=True)
 
-    output_excel = io.BytesIO()
-    with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
-        df_final.to_excel(writer, index=False, sheet_name='Produk')
-    
-    st.download_button(
-        label="Download Data Excel",
-        data=output_excel.getvalue(),
-        file_name=f"tokopedia_produk_sid_{st.session_state.sid_input_value}_final.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-elif st.session_state.scraping_finished and not st.session_state.all_combined_data:
-    st.warning("Tidak ada data produk final yang berhasil diekstrak dan digabungkan.")
+        output_excel = io.BytesIO()
+        with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
+            df_final.to_excel(writer, index=False, sheet_name='Produk')
+        
+        st.download_button(
+            label="Download Data Excel",
+            data=output_excel.getvalue(),
+            file_name=f"tokopedia_produk_sid_{st.session_state.sid_input_value}_final.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else: # Scraping finished but no data
+        if not st.session_state.initial_product_list: # Check if initial fetch failed
+             pass # Warning already shown by initial fetch logic
+        else: # Initial fetch succeeded but PDP or combination failed for all
+            st.warning("Tidak ada data produk final yang berhasil diekstrak dan digabungkan setelah tahap PDP.")
 
-# Tampilkan log jika ada
-if st.session_state.show_logs_value and st.session_state.log_messages:
-    st.subheader("Log Proses:")
-    for msg in st.session_state.log_messages:
-        st.text(msg)
+# Note: Persistent log display was removed for simplicity in this refactor,
+# but st.session_state.show_logs_value still controls conditional logging within functions.
+# If you need a persistent visual log, you'd add messages to a list in session_state
+# and display that list, being mindful of duplicates if reruns happen often.
